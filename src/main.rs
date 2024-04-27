@@ -1,15 +1,26 @@
 use axum::{
-    extract::Query,
+    extract::Path,
+    http::StatusCode,
     routing::{get, post},
     Extension, Json, Router,
 };
+use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path;
 use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
+
 #[derive(Clone, Debug)]
 struct Data {
     data: Arc<Mutex<HashMap<String, String>>>,
+}
+
+#[derive(Clone, Debug)]
+struct LocalIp {
+    ip: IpAddr,
+    port: u16,
 }
 
 impl Data {
@@ -24,30 +35,33 @@ impl Data {
 struct FilePath {
     path: String,
 }
-#[derive(Serialize)]
-struct Url {
-    url: String,
-}
-#[derive(Deserialize)]
-struct SubjectArgs {
-    uuid: String,
-}
+
 // 请求主体是一个异步流，只能使用一次。因此，您只能有一个提取器来消耗请求正文。
 // axum 通过要求此类提取器作为处理程序采用的最后一个参数来强制执行此操作。
 //https://docs.rs/axum/latest/axum/extract/index.html#the-order-of-extractors
-async fn generate_url(Extension(data): Extension<Data>, Json(file): Json<FilePath>) -> Json<Url> {
-    let uuid = Uuid::new_v4().to_string();
-    if let Ok(mut map) = data.data.lock() {
-        map.insert(uuid.clone(), file.path);
-        println!("HashMap contents:");
-        for (key, value) in map.iter() {
-            println!("Key: {}, Value: {}", key, value);
+async fn generate_url(
+    Extension(data): Extension<Data>,
+    Extension(local_ip): Extension<LocalIp>,
+    Json(file): Json<FilePath>,
+) -> String {
+    let file_path = path::Path::new(&file.path);
+    if file_path.exists() {
+        let uuid = Uuid::new_v4().to_string();
+        if let Ok(mut map) = data.data.lock() {
+            map.insert(uuid.clone(), file.path.clone());
         }
+        let file_name = file_path.file_name().unwrap();
+
+        format!(
+            "http://{:?}:{}/get_file/{}/{}",
+            local_ip.ip,
+            local_ip.port,
+            uuid,
+            file_name.to_str().unwrap()
+        )
+    } else {
+        "File not exists!!".to_string()
     }
-    let ans = Url {
-        url: format!("/get_file?uuid={}", uuid),
-    };
-    Json(ans)
 }
 
 // 在 Axum 中，您可以使用不同的方式来获取 GET 请求中的参数。以下是一些常见的方法：
@@ -62,31 +76,44 @@ async fn generate_url(Extension(data): Extension<Data>, Json(file): Json<FilePat
 // 示例：GET /subject?page=1&keyword=axum.rs
 // 使用 axum::extract::Query 可以获取 URL 参数。
 
-async fn get_data(Extension(data): Extension<Data>, Query(args): Query<SubjectArgs>) -> String {
+async fn get_data(
+    Extension(data): Extension<Data>,
+    Path((uuid, _team_id)): Path<(String, String)>,
+) -> Result<Vec<u8>, StatusCode> {
     if let Ok(map) = data.data.lock() {
-        println!("HashMap contents:");
-        for (key, value) in map.iter() {
-            println!("Key: {}, Value: {}", key, value);
-            println!("uuid: {}", &args.uuid);
-        }
-        match map.get(&args.uuid) {
-            Some(path) => path.clone(),
-            None => String::from("Data not found"),
+        match map.get(&uuid) {
+            Some(path) => match std::fs::read(path) {
+                Ok(file) => Ok(file),
+                Err(_) => Err(StatusCode::NOT_FOUND),
+            },
+            None => Err(StatusCode::NOT_FOUND),
         }
     } else {
-        String::from("Data not found")
+        Err(StatusCode::NOT_FOUND)
     }
 }
 
 #[tokio::main]
 async fn main() {
     let data = Data::new();
+    let ip = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+    let port = 3000;
+    let my_local_ip = local_ip().unwrap();
+
+    println!("This is my local IP address: {:?}", my_local_ip);
+    let local_ip_port = LocalIp {
+        ip: my_local_ip,
+        port,
+    };
 
     let app = Router::new()
         .route("/generate_url", post(generate_url))
-        .route("/get_file", get(get_data))
-        .layer(Extension(data));
+        .route("/get_file/:uuid/:file_name", get(get_data))
+        .layer(Extension(data))
+        .layer(Extension(local_ip_port));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let socket_addr = SocketAddr::new(ip, port);
+
+    let listener = tokio::net::TcpListener::bind(socket_addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
