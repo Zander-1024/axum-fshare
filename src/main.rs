@@ -5,13 +5,26 @@ use axum::{
     Extension, Json, Router,
 };
 use local_ip_address::local_ip;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path;
 use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
+use clap::Parser;
+use qrrs::qrcode;
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// Path to the file or folder to be shared
+    path: Option<String>,
+
+    /// Service Port. Default 9527
+    #[arg(short, long)]
+    port: Option<u16>,
+}
 #[derive(Clone, Debug)]
 struct Data {
     data: Arc<Mutex<HashMap<String, String>>>,
@@ -43,27 +56,30 @@ async fn generate_url(
     Extension(data): Extension<Data>,
     Extension(local_ip): Extension<LocalIp>,
     Json(file): Json<FilePath>,
-) -> String {
-    let file_path = path::Path::new(&file.path);
+) -> Result<String, StatusCode> {
+    generate_url_sync(&data, &local_ip, &file.path)
+}
+
+fn generate_url_sync(data: &Data, local_ip: &LocalIp, path: &str) -> Result<String, StatusCode> {
+    let file_path = path::Path::new(path);
     if file_path.exists() {
         let uuid = Uuid::new_v4().to_string();
         if let Ok(mut map) = data.data.lock() {
-            map.insert(uuid.clone(), file.path.clone());
+            map.insert(uuid.clone(), path.to_owned());
         }
         let file_name = file_path.file_name().unwrap();
 
-        format!(
+        Ok(format!(
             "http://{:?}:{}/get_file/{}/{}",
             local_ip.ip,
             local_ip.port,
             uuid,
             file_name.to_str().unwrap()
-        )
+        ))
     } else {
-        "File not exists!!".to_string()
+        Err(StatusCode::NOT_FOUND)
     }
 }
-
 // 在 Axum 中，您可以使用不同的方式来获取 GET 请求中的参数。以下是一些常见的方法：
 
 // Path 参数：
@@ -97,14 +113,35 @@ async fn get_data(
 async fn main() {
     let data = Data::new();
     let ip = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
-    let port = 3000;
+    let mut port = 9527;
     let my_local_ip = local_ip().unwrap();
 
-    println!("This is my local IP address: {:?}", my_local_ip);
+    let cli = Cli::parse();
+    if let Some(p) = cli.port {
+        port = p;
+    }
+    println!("This is my local IP address: {:?}:{}", my_local_ip, port);
     let local_ip_port = LocalIp {
         ip: my_local_ip,
         port,
     };
+    // You can check the value provided by positional arguments, or option arguments
+    if let Some(path) = cli.path.as_deref() {
+        println!("Value for path: {:?}", path);
+        match generate_url_sync(&data, &local_ip_port, path) {
+            Ok(url) => match qrcode::make_code(&url) {
+                Ok(code) => qrcode::print_code_to_term(
+                    &code,
+                    qrcode::QrCodeViewArguments {
+                        margin: 5,
+                        invert_colors: false,
+                    },
+                ),
+                Err(_) => println!("Failed to generate a QR code"),
+            },
+            Err(err) => println!("err code: {:?}", err),
+        }
+    }
 
     let app = Router::new()
         .route("/generate_url", post(generate_url))
