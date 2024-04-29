@@ -102,16 +102,16 @@ async fn get_data(
     Extension(data): Extension<Data>,
     Path((uuid, file_name)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let mut file_path = None;
-    {
-        file_path = match data.data.lock() {
+    let file_path = {
+        match data.data.lock() {
             Ok(map) => {
                 let file = map.get(&uuid).unwrap();
                 Some(file.clone())
             }
             Err(_) => None,
-        };
-    }
+        }
+    };
+
     match file_path {
         None => (
             [
