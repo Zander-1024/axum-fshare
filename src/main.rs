@@ -1,6 +1,10 @@
 use axum::{
+    body::Body,
+    debug_handler,
     extract::Path,
+    http::header,
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Extension, Json, Router,
 };
@@ -68,14 +72,15 @@ fn generate_url_sync(data: &Data, local_ip: &LocalIp, path: &str) -> Result<Stri
             map.insert(uuid.clone(), path.to_owned());
         }
         let file_name = file_path.file_name().unwrap();
-
-        Ok(format!(
+        let out_url = format!(
             "http://{:?}:{}/get_file/{}/{}",
             local_ip.ip,
             local_ip.port,
             uuid,
             file_name.to_str().unwrap()
-        ))
+        );
+        println!("url: {}", &out_url);
+        Ok(out_url)
     } else {
         Err(StatusCode::NOT_FOUND)
     }
@@ -92,20 +97,47 @@ fn generate_url_sync(data: &Data, local_ip: &LocalIp, path: &str) -> Result<Stri
 // 示例：GET /subject?page=1&keyword=axum.rs
 // 使用 axum::extract::Query 可以获取 URL 参数。
 
+#[debug_handler]
 async fn get_data(
     Extension(data): Extension<Data>,
-    Path((uuid, _team_id)): Path<(String, String)>,
-) -> Result<Vec<u8>, StatusCode> {
-    if let Ok(map) = data.data.lock() {
-        match map.get(&uuid) {
-            Some(path) => match std::fs::read(path) {
-                Ok(file) => Ok(file),
-                Err(_) => Err(StatusCode::NOT_FOUND),
-            },
-            None => Err(StatusCode::NOT_FOUND),
+    Path((uuid, file_name)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let mut file_path = None;
+    {
+        file_path = match data.data.lock() {
+            Ok(map) => {
+                let file = map.get(&uuid).unwrap();
+                Some(file.clone())
+            }
+            Err(_) => None,
+        };
+    }
+    match file_path {
+        None => (
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8".to_string()),
+                (header::SERVER, "axum".to_string()),
+            ],
+            Body::from("invalid path".to_string()),
+        ),
+        Some(path) => {
+            let file = tokio::fs::File::open(path.as_str()).await.unwrap();
+            let stream = tokio_util::io::ReaderStream::new(file);
+            let body = Body::from_stream(stream);
+
+            let headers = [
+                (
+                    header::CONTENT_TYPE,
+                    "text/plain; charset=utf-8".to_string(),
+                ),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file_name),
+                ),
+            ];
+
+            (headers, body)
         }
-    } else {
-        Err(StatusCode::NOT_FOUND)
     }
 }
 
@@ -120,7 +152,7 @@ async fn main() {
     if let Some(p) = cli.port {
         port = p;
     }
-    println!("This is my local IP address: {:?}:{}", my_local_ip, port);
+
     let local_ip_port = LocalIp {
         ip: my_local_ip,
         port,
