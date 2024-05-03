@@ -163,21 +163,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "axum-fshare"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "local-ip-address",
- "qrrs",
- "serde",
- "tokio",
- "tokio-util",
- "uuid",
-]
-
-[[package]]
 name = "axum-macros"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -445,6 +430,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fshare"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "local-ip-address",
+ "qrrs",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]

@@ -62,8 +62,8 @@ fn generate_url_sync(db: DB, local_ip: &str, file_path: &PathBuf) -> Result<Stri
         if let Ok(mut map) = db.write() {
             map.insert(uuid.clone(), file_path.to_owned());
         }
-        let file_name = file_path.file_name().unwrap();
-        let out_url = format!("http://{}/get_file/{:?}/{:?}", local_ip, uuid, file_name);
+        let file_name = file_path.file_name().unwrap().to_str();
+        let out_url = format!("http://{}/get_file/{:?}/{}", local_ip, uuid, file_name.unwrap());
         println!("url: {}", &out_url);
         Ok(out_url)
     } else {
