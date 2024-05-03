@@ -54,6 +54,8 @@ fn generate_qr_code(args: &Cli, local_ip_port: &str, db: DB) {
         }
     }
 }
+
+#[inline]
 fn generate_url_sync(db: DB, local_ip: &str, file_path: &PathBuf) -> Result<String, StatusCode> {
     if file_path.exists() {
         let uuid = Uuid::new_v4();
