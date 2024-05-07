@@ -51,13 +51,18 @@ jobs:
       if: matrix.build == 'linux' || matrix.build == 'macos' || matrix.build == 'linux-arm' || matrix.build == 'macos-arm'
       run: |
         n="fshare-${{ github.ref_name }}-${{ matrix.name }}"
+        mkdir "$n"
         cp "target/${{ matrix.target }}/release/fshare" "$n"
+        strip "$n/fshare"
+        tar zcf $n.tar.gz $n
     
     - name: Create tarballs (Windows)
       if :  matrix.build == 'win-msvc'
       run: |
-        n="fshare-${{ github.ref_name }}-${{ matrix.name }}.exe"
+        n="fshare-${{ github.ref_name }}-${{ matrix.name }}"
+        mkdir "$n"
         cp "target/${{ matrix.target }}/release/fshare.exe" "$n"
+        7z a $n.zip $n
 
 
     - name: Release
