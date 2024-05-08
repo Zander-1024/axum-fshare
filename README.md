@@ -26,8 +26,12 @@
 3. **运行应用：**
 
    ```bash
-   ./target/release/axum-fshare FILE_PATH
+   axum-fshare FILE_PATH
    ```
+
+   ![Usage](./doc/Usage.gif)
+
+   图片使用 `terminalizer`生成
 
 4. **分享文件：**
 
@@ -40,7 +44,7 @@
 ## TODO
 
 - [ ] 开发 GUI 版本的应用，提供更加友好的用户界面。
-- [ ] 添加更多的文件分享方式和功能，如支持传输文件夹、文件加密等。
+- [ ] 支持传输文件夹。
 
 ## 技术栈
 

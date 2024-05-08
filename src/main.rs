@@ -1,6 +1,6 @@
 mod api;
 mod cli;
-mod zip_utils;
+// mod zip_utils;
 
 use clap::Parser;
 
